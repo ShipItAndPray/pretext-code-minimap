@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pretext Code Minimap - Live Demo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #282c34;
+    --bg-darker: #21252b;
+    --bg-sidebar: #1e2127;
+    --gutter: #3a3f4b;
+    --text: #abb2bf;
+    --text-dim: #636d83;
+    --keyword: #c678dd;
+    --string: #98c379;
+    --comment: #5c6370;
+    --function: #61afef;
+    --type: #e5c07b;
+    --number: #d19a66;
+    --operator: #56b6c2;
+    --accent: #528bff;
+    --minimap-bg: #1a1d23;
+    --viewport-bg: rgba(82, 139, 255, 0.12);
+    --viewport-border: rgba(82, 139, 255, 0.4);
+    --scrollbar: #3a3f4b;
+    --scrollbar-thumb: #5a6275;
+  }
+
+  body {
+    background: var(--bg-darker);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Top bar */
+  .topbar {
+    background: #1b1d23;
+    border-bottom: 1px solid #181a1f;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .topbar .tab {
+    background: var(--bg);
+    padding: 6px 16px;
+    border-radius: 4px 4px 0 0;
+    color: var(--text);
+    font-size: 12px;
+    border: 1px solid #333842;
+    border-bottom: 1px solid var(--bg);
+    position: relative;
+    top: 1px;
+  }
+  .topbar .title {
+    color: var(--text-dim);
+    margin-left: auto;
+    font-size: 12px;
+  }
+  .topbar .badge {
+    background: linear-gradient(135deg, #3a3f4b, #2c313a);
+    color: var(--accent);
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+
+  /* Main editor area */
+  .editor-wrap {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Line numbers + code */
+  .editor-container {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  .line-numbers {
+    width: 56px;
+    background: var(--bg);
+    color: var(--text-dim);
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 20px;
+    padding: 8px 0;
+    text-align: right;
+    user-select: none;
+    overflow: hidden;
+    flex-shrink: 0;
+    border-right: 1px solid #333842;
+  }
+  .line-numbers .ln {
+    padding-right: 12px;
+    height: 20px;
+  }
+  .line-numbers .ln.active {
+    color: #ccc;
+  }
+
+  .code-area {
+    flex: 1;
+    background: var(--bg);
+    overflow-y: auto;
+    overflow-x: auto;
+    padding: 8px 0 8px 16px;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 20px;
+    white-space: pre;
+    cursor: text;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar);
+  }
+  .code-area::-webkit-scrollbar { width: 10px; }
+  .code-area::-webkit-scrollbar-track { background: var(--scrollbar); }
+  .code-area::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+
+  .code-line { height: 20px; }
+
+  /* Syntax colors */
+  .tok-keyword { color: var(--keyword); }
+  .tok-string { color: var(--string); }
+  .tok-comment { color: var(--comment); font-style: italic; }
+  .tok-function { color: var(--function); }
+  .tok-type { color: var(--type); }
+  .tok-number { color: var(--number); }
+  .tok-operator { color: var(--operator); }
+  .tok-plain { color: var(--text); }
+  .tok-punctuation { color: var(--text); }
+
+  /* Current line highlight */
+  .code-line.active-line {
+    background: rgba(42, 47, 56, 0.8);
+    display: block;
+    margin-left: -16px;
+    padding-left: 16px;
+    margin-right: -16px;
+    padding-right: 16px;
+  }
+
+  /* Minimap */
+  .minimap-container {
+    width: 86px;
+    background: var(--minimap-bg);
+    position: relative;
+    flex-shrink: 0;
+    cursor: pointer;
+    border-left: 1px solid #1a1d23;
+  }
+  .minimap-container canvas {
+    display: block;
+  }
+  .minimap-viewport {
+    position: absolute;
+    left: 0;
+    right: 0;
+    background: var(--viewport-bg);
+    border-left: 2px solid var(--viewport-border);
+    pointer-events: none;
+    transition: top 0.05s linear;
+  }
+  .minimap-container:hover .minimap-viewport {
+    background: rgba(82, 139, 255, 0.18);
+  }
+
+  /* Status bar */
+  .statusbar {
+    background: var(--accent);
+    color: #fff;
+    padding: 3px 16px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+  }
+  .statusbar .sep { opacity: 0.4; }
+  .statusbar .right { margin-left: auto; display: flex; gap: 16px; }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .minimap-container { width: 60px; }
+    .line-numbers { width: 40px; }
+    .line-numbers .ln { padding-right: 6px; font-size: 11px; }
+    .code-area { font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="tab">minimap-demo.ts</div>
+  <div class="title">pretext-code-minimap</div>
+  <div class="badge">Powered by @chenglou/pretext</div>
+</div>
+
+<div class="editor-wrap">
+  <div class="editor-container">
+    <div class="line-numbers" id="lineNumbers"></div>
+    <div class="code-area" id="codeArea"></div>
+  </div>
+  <div class="minimap-container" id="minimapContainer">
+    <canvas id="minimapCanvas"></canvas>
+    <div class="minimap-viewport" id="minimapViewport"></div>
+  </div>
+</div>
+
+<div class="statusbar" id="statusbar">
+  <span id="statLines">0 lines</span>
+  <span class="sep">|</span>
+  <span id="statVisible">0 visible</span>
+  <span class="sep">|</span>
+  <span>Minimap scale: <span id="statScale">0.15x</span></span>
+  <div class="right">
+    <span>TypeScript</span>
+    <span>UTF-8</span>
+    <span>LF</span>
+  </div>
+</div>
+
+<script>
+// --- Sample TypeScript code ---
+const SAMPLE_CODE = `import { createMinimap, MinimapConfig, RenderMode } from '@pretext/code-minimap';
+import { SyntaxHighlighter, TokenStream } from '@pretext/syntax';
+import { CanvasRenderer } from '@pretext/canvas';
+
+/**
+ * VS Code-style code minimap implementation.
+ * Uses Canvas for pixel-accurate rendering at scale.
+ *
+ * Architecture:
+ *   Editor <-> Minimap <-> Viewport Indicator
+ *   All three stay in sync via scroll events.
+ */
+
+interface EditorState {
+  lines: string[];
+  scrollTop: number;
+  scrollHeight: number;
+  visibleLines: number;
+  cursorLine: number;
+  cursorCol: number;
+  selections: Selection[];
+}
+
+interface Selection {
+  startLine: number;
+  startCol: number;
+  endLine: number;
+  endCol: number;
+}
+
+interface MinimapOptions {
+  scale: number;
+  charWidth: number;
+  lineHeight: number;
+  maxColumns: number;
+  renderMode: RenderMode;
+  showSlider: 'always' | 'mouseover';
+  backgroundColor: string;
+}
+
+type TokenType =
+  | 'keyword'
+  | 'string'
+  | 'comment'
+  | 'function'
+  | 'type'
+  | 'number'
+  | 'operator'
+  | 'plain';
+
+const TOKEN_COLORS: Record<TokenType, string> = {
+  keyword:  '#c678dd',
+  string:   '#98c379',
+  comment:  '#5c6370',
+  function: '#61afef',
+  type:     '#e5c07b',
+  number:   '#d19a66',
+  operator: '#56b6c2',
+  plain:    '#abb2bf',
+};
+
+const DEFAULT_OPTIONS: MinimapOptions = {
+  scale: 0.15,
+  charWidth: 1.2,
+  lineHeight: 3,
+  maxColumns: 120,
+  renderMode: 'proportional',
+  showSlider: 'always',
+  backgroundColor: '#1a1d23',
+};
+
+class CodeMinimap {
+  private canvas: HTMLCanvasElement;
+  private ctx: CanvasRenderingContext2D;
+  private editor: EditorState;
+  private options: MinimapOptions;
+  private highlighter: SyntaxHighlighter;
+  private tokenCache: Map<number, TokenStream>;
+  private animFrameId: number | null = null;
+  private isDragging = false;
+
+  constructor(
+    canvas: HTMLCanvasElement,
+    editor: EditorState,
+    options: Partial<MinimapOptions> = {}
+  ) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d')!;
+    this.editor = editor;
+    this.options = { ...DEFAULT_OPTIONS, ...options };
+    this.highlighter = new SyntaxHighlighter('typescript');
+    this.tokenCache = new Map();
+    this.setupEventListeners();
+  }
+
+  /** Tokenize a single line with caching */
+  private tokenizeLine(lineIndex: number): TokenStream {
+    if (this.tokenCache.has(lineIndex)) {
+      return this.tokenCache.get(lineIndex)!;
+    }
+    const line = this.editor.lines[lineIndex];
+    const tokens = this.highlighter.tokenize(line);
+    this.tokenCache.set(lineIndex, tokens);
+    return tokens;
+  }
+
+  /** Clear the token cache when content changes */
+  invalidateCache(startLine?: number, endLine?: number): void {
+    if (startLine !== undefined && endLine !== undefined) {
+      for (let i = startLine; i <= endLine; i++) {
+        this.tokenCache.delete(i);
+      }
+    } else {
+      this.tokenCache.clear();
+    }
+  }
+
+  /** Render a single line as colored blocks on the canvas */
+  private renderLine(lineIndex: number, y: number): void {
+    const { charWidth, maxColumns } = this.options;
+    const tokens = this.tokenizeLine(lineIndex);
+
+    let x = 8; // left padding
+    for (const token of tokens) {
+      const color = TOKEN_COLORS[token.type as TokenType] || TOKEN_COLORS.plain;
+      this.ctx.fillStyle = color;
+
+      const width = Math.min(token.length, maxColumns) * charWidth;
+      if (token.type !== 'plain' || token.text.trim().length > 0) {
+        this.ctx.globalAlpha = 0.85;
+        this.ctx.fillRect(x, y, width, 2);
+      }
+      x += width;
+      if (x > this.canvas.width - 8) break;
+    }
+    this.ctx.globalAlpha = 1.0;
+  }
+
+  /** Full minimap render pass */
+  render(): void {
+    const { lineHeight, backgroundColor } = this.options;
+    const { width, height } = this.canvas;
+    const totalLines = this.editor.lines.length;
+
+    // Clear
+    this.ctx.fillStyle = backgroundColor;
+    this.ctx.fillRect(0, 0, width, height);
+
+    // Render each line as minimap blocks
+    for (let i = 0; i < totalLines; i++) {
+      const y = i * lineHeight;
+      if (y > height) break;
+      this.renderLine(i, y);
+    }
+  }
+
+  /** Compute viewport indicator position and height */
+  getViewportRect(): { top: number; height: number } {
+    const { lineHeight } = this.options;
+    const { scrollTop, scrollHeight, visibleLines, lines } = this.editor;
+    const totalLines = lines.length;
+    const totalMinimapHeight = totalLines * lineHeight;
+
+    const scrollFraction = scrollTop / Math.max(scrollHeight - 1, 1);
+    const viewportHeight = (visibleLines / totalLines) * totalMinimapHeight;
+    const maxTop = totalMinimapHeight - viewportHeight;
+    const top = scrollFraction * maxTop;
+
+    return {
+      top: Math.max(0, top),
+      height: Math.min(viewportHeight, totalMinimapHeight),
+    };
+  }
+
+  /** Handle click on minimap to scroll editor */
+  handleClick(clientY: number): void {
+    const rect = this.canvas.getBoundingClientRect();
+    const y = clientY - rect.top;
+    const { lineHeight } = this.options;
+    const targetLine = Math.floor(y / lineHeight);
+    const clampedLine = Math.max(0, Math.min(targetLine, this.editor.lines.length - 1));
+
+    // Scroll editor to target line (centered)
+    const lineOffset = clampedLine - Math.floor(this.editor.visibleLines / 2);
+    const scrollTarget = Math.max(0, lineOffset) * 20; // 20px per editor line
+    document.getElementById('codeArea')?.scrollTo({
+      top: scrollTarget,
+      behavior: 'smooth',
+    });
+  }
+
+  /** Set up mouse event listeners for drag scrolling */
+  private setupEventListeners(): void {
+    this.canvas.addEventListener('mousedown', (e) => {
+      this.isDragging = true;
+      this.handleClick(e.clientY);
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (this.isDragging) {
+        this.handleClick(e.clientY);
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      this.isDragging = false;
+    });
+  }
+
+  /** Schedule a render on next animation frame */
+  scheduleRender(): void {
+    if (this.animFrameId !== null) return;
+    this.animFrameId = requestAnimationFrame(() => {
+      this.render();
+      this.animFrameId = null;
+    });
+  }
+
+  /** Clean up resources */
+  dispose(): void {
+    if (this.animFrameId !== null) {
+      cancelAnimationFrame(this.animFrameId);
+    }
+    this.tokenCache.clear();
+  }
+}
+
+// --- Initialize the minimap ---
+
+export function initMinimap(
+  editorElement: HTMLElement,
+  canvasElement: HTMLCanvasElement
+): CodeMinimap {
+  const config: MinimapConfig = {
+    target: editorElement,
+    canvas: canvasElement,
+    language: 'typescript',
+    theme: 'one-dark',
+  };
+
+  const minimap = createMinimap(config);
+  console.log(\`[pretext-minimap] Initialized: \${minimap.editor.lines.length} lines\`);
+  return minimap;
+}`;
+
+// --- Syntax highlighting (simple tokenizer) ---
+
+const KEYWORDS = new Set([
+  'import','from','export','const','let','var','function','class','interface',
+  'type','extends','implements','new','return','if','else','for','while','do',
+  'switch','case','break','continue','throw','try','catch','finally','typeof',
+  'instanceof','in','of','as','is','void','null','undefined','true','false',
+  'this','super','private','public','protected','static','readonly','abstract',
+  'async','await','yield','default','enum','namespace','module','declare',
+  'Partial','Record','Map','number','string','boolean',
+]);
+
+function tokenize(line) {
+  const tokens = [];
+  let i = 0;
+  const len = line.length;
+
+  while (i < len) {
+    // Whitespace
+    if (line[i] === ' ' || line[i] === '\t') {
+      let start = i;
+      while (i < len && (line[i] === ' ' || line[i] === '\t')) i++;
+      tokens.push({ type: 'plain', text: line.slice(start, i) });
+      continue;
+    }
+    // Line comment
+    if (line[i] === '/' && line[i+1] === '/') {
+      tokens.push({ type: 'comment', text: line.slice(i) });
+      break;
+    }
+    // Block comment (single line portion)
+    if (line[i] === '/' && line[i+1] === '*') {
+      let end = line.indexOf('*/', i + 2);
+      if (end === -1) end = len - 2;
+      tokens.push({ type: 'comment', text: line.slice(i, end + 2) });
+      i = end + 2;
+      continue;
+    }
+    // Decorator-like comment starts
+    if (line[i] === '*') {
+      let start = i;
+      while (i < len && line[i] !== ' ' && line[i] !== '\t' && line[i] !== '\n') i++;
+      tokens.push({ type: 'comment', text: line.slice(start, i) });
+      continue;
+    }
+    // String (single or double quote or backtick)
+    if (line[i] === "'" || line[i] === '"' || line[i] === '`') {
+      let q = line[i], start = i;
+      i++;
+      while (i < len && line[i] !== q) {
+        if (line[i] === '\\') i++;
+        i++;
+      }
+      if (i < len) i++;
+      tokens.push({ type: 'string', text: line.slice(start, i) });
+      continue;
+    }
+    // Number
+    if (/[0-9]/.test(line[i])) {
+      let start = i;
+      while (i < len && /[0-9.]/.test(line[i])) i++;
+      tokens.push({ type: 'number', text: line.slice(start, i) });
+      continue;
+    }
+    // Operators
+    if ('=<>!&|+-*/^%?:'.includes(line[i])) {
+      let start = i;
+      while (i < len && '=<>!&|+-*/^%?:'.includes(line[i])) i++;
+      tokens.push({ type: 'operator', text: line.slice(start, i) });
+      continue;
+    }
+    // Punctuation
+    if ('(){}[];,.'.includes(line[i])) {
+      tokens.push({ type: 'punctuation', text: line[i] });
+      i++;
+      continue;
+    }
+    // Word (identifier or keyword)
+    if (/[a-zA-Z_$@]/.test(line[i])) {
+      let start = i;
+      while (i < len && /[a-zA-Z0-9_$@]/.test(line[i])) i++;
+      let word = line.slice(start, i);
+      if (KEYWORDS.has(word)) {
+        tokens.push({ type: 'keyword', text: word });
+      } else if (i < len && line[i] === '(') {
+        tokens.push({ type: 'function', text: word });
+      } else if (word[0] === word[0].toUpperCase() && /^[A-Z]/.test(word)) {
+        tokens.push({ type: 'type', text: word });
+      } else {
+        tokens.push({ type: 'plain', text: word });
+      }
+      continue;
+    }
+    // Fallback
+    tokens.push({ type: 'plain', text: line[i] });
+    i++;
+  }
+  return tokens;
+}
+
+// --- In-block comment state tracker ---
+function tokenizeWithBlockComments(lines) {
+  const result = [];
+  let inBlock = false;
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li];
+    if (inBlock) {
+      const endIdx = line.indexOf('*/');
+      if (endIdx !== -1) {
+        inBlock = false;
+        const commentPart = line.slice(0, endIdx + 2);
+        const rest = line.slice(endIdx + 2);
+        const tokens = [{ type: 'comment', text: commentPart }];
+        if (rest) tokens.push(...tokenize(rest));
+        result.push(tokens);
+      } else {
+        result.push([{ type: 'comment', text: line }]);
+      }
+    } else {
+      const tokens = tokenize(line);
+      result.push(tokens);
+      // Check if we entered a block comment that didn't close
+      let open = 0;
+      for (const t of tokens) {
+        if (t.type === 'comment') {
+          if (t.text.startsWith('/*') && !t.text.includes('*/')) open++;
+          if (t.text.includes('*/')) open = Math.max(0, open - 1);
+        }
+      }
+      if (open > 0) inBlock = true;
+    }
+  }
+  return result;
+}
+
+// --- DOM references ---
+const codeArea = document.getElementById('codeArea');
+const lineNumbers = document.getElementById('lineNumbers');
+const minimapCanvas = document.getElementById('minimapCanvas');
+const minimapContainer = document.getElementById('minimapContainer');
+const minimapViewport = document.getElementById('minimapViewport');
+
+// --- Build the editor ---
+const lines = SAMPLE_CODE.split('\n');
+const allTokens = tokenizeWithBlockComments(lines);
+
+function renderEditor() {
+  // Code lines
+  let html = '';
+  for (let i = 0; i < lines.length; i++) {
+    const tokens = allTokens[i];
+    let lineHtml = '';
+    for (const tok of tokens) {
+      const escaped = tok.text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      lineHtml += `<span class="tok-${tok.type}">${escaped}</span>`;
+    }
+    html += `<div class="code-line" data-line="${i}">${lineHtml || ' '}</div>`;
+  }
+  codeArea.innerHTML = html;
+
+  // Line numbers
+  let lnHtml = '';
+  for (let i = 1; i <= lines.length; i++) {
+    lnHtml += `<div class="ln">${i}</div>`;
+  }
+  lineNumbers.innerHTML = lnHtml;
+}
+
+renderEditor();
+
+// --- Minimap rendering ---
+const MINIMAP_SCALE = 0.15;
+const MINIMAP_LINE_HEIGHT = 3;
+const MINIMAP_CHAR_WIDTH = 1.2;
+
+const TOKEN_COLORS_MAP = {
+  keyword:     '#c678dd',
+  string:      '#98c379',
+  comment:     '#5c6370',
+  function:    '#61afef',
+  type:        '#e5c07b',
+  number:      '#d19a66',
+  operator:    '#56b6c2',
+  plain:       '#636d83',
+  punctuation: '#636d83',
+};
+
+function renderMinimap() {
+  const containerRect = minimapContainer.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const canvasWidth = Math.floor(containerRect.width);
+  const canvasHeight = Math.floor(containerRect.height);
+
+  minimapCanvas.width = canvasWidth * dpr;
+  minimapCanvas.height = canvasHeight * dpr;
+  minimapCanvas.style.width = canvasWidth + 'px';
+  minimapCanvas.style.height = canvasHeight + 'px';
+
+  const ctx = minimapCanvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  // Clear
+  ctx.fillStyle = '#1a1d23';
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  // Draw each line
+  for (let i = 0; i < lines.length; i++) {
+    const y = i * MINIMAP_LINE_HEIGHT;
+    if (y > canvasHeight) break;
+
+    const tokens = allTokens[i];
+    let x = 6;
+    for (const tok of tokens) {
+      if (tok.text.trim().length === 0) {
+        x += tok.text.length * MINIMAP_CHAR_WIDTH;
+        continue;
+      }
+      const color = TOKEN_COLORS_MAP[tok.type] || TOKEN_COLORS_MAP.plain;
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.9;
+      const w = tok.text.length * MINIMAP_CHAR_WIDTH;
+      ctx.fillRect(x, y + 0.5, Math.min(w, canvasWidth - x - 4), 2);
+      x += w;
+      if (x > canvasWidth - 4) break;
+    }
+  }
+  ctx.globalAlpha = 1.0;
+}
+
+// --- Viewport indicator ---
+function updateViewport() {
+  const totalLines = lines.length;
+  const totalMinimapH = totalLines * MINIMAP_LINE_HEIGHT;
+  const containerH = minimapContainer.getBoundingClientRect().height;
+
+  const visibleLines = Math.floor(codeArea.clientHeight / 20);
+  const scrollFraction = codeArea.scrollTop / Math.max(codeArea.scrollHeight - codeArea.clientHeight, 1);
+  const vpHeight = Math.max((visibleLines / totalLines) * Math.min(totalMinimapH, containerH), 20);
+  const maxTop = Math.min(totalMinimapH, containerH) - vpHeight;
+  const vpTop = scrollFraction * maxTop;
+
+  minimapViewport.style.top = Math.max(0, vpTop) + 'px';
+  minimapViewport.style.height = vpHeight + 'px';
+
+  // Sync line numbers scroll
+  lineNumbers.scrollTop = codeArea.scrollTop;
+
+  // Update stats
+  document.getElementById('statLines').textContent = totalLines + ' lines';
+  document.getElementById('statVisible').textContent = visibleLines + ' visible';
+}
+
+// --- Scroll sync ---
+codeArea.addEventListener('scroll', updateViewport);
+
+// --- Minimap click to scroll ---
+let isDragging = false;
+
+function handleMinimapClick(clientY) {
+  const rect = minimapContainer.getBoundingClientRect();
+  const y = clientY - rect.top;
+  const targetLine = Math.floor(y / MINIMAP_LINE_HEIGHT);
+  const visibleLines = Math.floor(codeArea.clientHeight / 20);
+  const scrollTarget = Math.max(0, (targetLine - Math.floor(visibleLines / 2))) * 20;
+  codeArea.scrollTo({ top: scrollTarget, behavior: 'smooth' });
+}
+
+minimapContainer.addEventListener('mousedown', (e) => {
+  isDragging = true;
+  handleMinimapClick(e.clientY);
+  e.preventDefault();
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (isDragging) handleMinimapClick(e.clientY);
+});
+
+window.addEventListener('mouseup', () => { isDragging = false; });
+
+// --- Active line highlight on click ---
+codeArea.addEventListener('click', (e) => {
+  const lineEl = e.target.closest('.code-line');
+  if (!lineEl) return;
+  document.querySelectorAll('.code-line.active-line').forEach(el => el.classList.remove('active-line'));
+  lineEl.classList.add('active-line');
+  const lineIdx = parseInt(lineEl.dataset.line, 10);
+  // Highlight line number
+  document.querySelectorAll('.ln.active').forEach(el => el.classList.remove('active'));
+  const lnEl = lineNumbers.children[lineIdx];
+  if (lnEl) lnEl.classList.add('active');
+});
+
+// --- Initial render ---
+renderMinimap();
+updateViewport();
+
+// --- Resize handler ---
+window.addEventListener('resize', () => {
+  renderMinimap();
+  updateViewport();
+});
+
+// --- Set default active line ---
+document.querySelector('.code-line')?.classList.add('active-line');
+document.querySelector('.ln')?.classList.add('active');
+</script>
+</body>
+</html>

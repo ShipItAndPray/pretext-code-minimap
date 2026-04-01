@@ -1,0 +1,45 @@
+{
+  "name": "@shipitandpray/pretext-code-minimap",
+  "version": "0.1.0",
+  "description": "VS Code-style code minimap for the browser. Pixel-accurate, Canvas-rendered, powered by Pretext.",
+  "author": "ShipItAndPray",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@chenglou/pretext": ">=0.0.3"
+  },
+  "devDependencies": {
+    "@chenglou/pretext": "^0.0.3",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  },
+  "keywords": [
+    "minimap",
+    "code-minimap",
+    "pretext",
+    "canvas",
+    "vscode",
+    "editor",
+    "syntax-highlighting"
+  ]
+}

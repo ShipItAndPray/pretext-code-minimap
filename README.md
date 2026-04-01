@@ -4,6 +4,8 @@ VS Code-style code minimap for the browser. Pixel-accurate, Canvas-rendered, pow
 
 No editor dependency — works with any text content.
 
+**[Live Demo](https://shipitandpray.github.io/pretext-code-minimap/)**
+
 ## Features
 
 - Pixel-accurate line positioning using Pretext text measurement
